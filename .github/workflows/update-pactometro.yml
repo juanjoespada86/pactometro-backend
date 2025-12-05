@@ -1,33 +1,33 @@
+
 name: Actualizar pactometro desde Junta
 
 on:
-  schedule:
-    # Cada minuto
-    - cron: '*/1 * * * *'
   workflow_dispatch:
+  schedule:
+    - cron: "* * * * *"
 
 jobs:
   update:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: "20"
 
       - name: Install dependencies
         run: npm install
 
-      - name: Ejecutar script de actualización
+      - name: Run update script
+        run: npm run update
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           JE_HOST: ${{ secrets.JE_HOST }}
           JE_USER: ${{ secrets.JE_USER }}
           JE_PASS: ${{ secrets.JE_PASS }}
-        run: npm run update
 

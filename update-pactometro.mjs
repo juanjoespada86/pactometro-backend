@@ -99,11 +99,6 @@ async function getTotalesLineaCM(numEnv) {
 
 // 6) Parsear la línea CM y extraer candidaturas
 function parseCandidaturasFromLineaCM(lineaCM) {
-  // Según el diseño de "ESCRUTINIO DE TOTALES": :contentReference[oaicite:6]{index=6}
-  //  - 22 campos de cabecera (fecha, identificador, códigos, nombre, mesas, censo, votos, etc.)
-  //  - Luego tabla de 50 candidaturas, cada una con 5 campos:
-  //    código (4), siglas (55), votos (8), porcentaje (5), diputados electos (3) :contentReference[oaicite:7]{index=7}
-
   const fields = lineaCM.split(';');
 
   const NUM_HEADER_FIELDS = 22;
@@ -124,22 +119,27 @@ function parseCandidaturasFromLineaCM(lineaCM) {
     const siglas = siglasRaw.trim();
     if (!siglas) continue;
 
+    // Nombre que queremos usar en el pactómetro
+    let displayName = siglas;
+
+    // 🟣 Regla especial:
+    // la candidatura "PODEMOS-IU-AV" la mostramos como "Unidas por Extremadura"
+    if (siglas === 'PODEMOS-IU-AV') {
+      displayName = 'Unidas por Extremadura';
+    }
+
     const votos = votosRaw ? Number(votosRaw) : 0;
-
-    // En campos porcentaje las dos últimas cifras son decimales (ej. "03782" = 37,82%) :contentReference[oaicite:8]{index=8}
     const porcentaje = pctRaw ? Number(pctRaw) / 100 : null;
-
     const escaños = escañosRaw ? Number(escañosRaw) : 0;
 
-    // Generamos un party_id simple a partir de las siglas
     const partyId = siglas
       .toLowerCase()
       .replace(/\s+/g, '_')
       .replace(/[^a-z0-9_]/g, '');
 
     candidaturas.push({
-      party_id: partyId,
-      party_name: siglas,
+      party_id: partyId,         // seguirá siendo "podemosiuav"
+      party_name: displayName,   // ahora será "Unidas por Extremadura"
       seats_2025: escaños,
       vote_pct_2025: porcentaje,
       votos_totales: votos,
@@ -149,6 +149,7 @@ function parseCandidaturasFromLineaCM(lineaCM) {
 
   return candidaturas;
 }
+
 
 // 7) Upsert en Supabase (creando partidos nuevos y manteniendo seats_2023 de los antiguos)
 async function upsertCandidaturasEnSupabase(candidaturas) {

@@ -9,4 +9,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Echo desde el cron
-        run: echo "Cron funcionando. Run ID: ${{ github.run_id }}"
+        run: echo "Cron funcionando"

@@ -29,4 +29,3 @@ jobs:
           JE_HOST: ${{ secrets.JE_HOST }}
           JE_USER: ${{ secrets.JE_USER }}
           JE_PASS: ${{ secrets.JE_PASS }}
-

@@ -49,24 +49,33 @@ async function fetchFromJunta(path) {
 
 // 4) Obtener el numEnv actual
 async function getCurrentNumEnv() {
-  // url: /descargas/csv/data/getEnvio/510 (sin parámetros) :contentReference[oaicite:2]{index=2}
+  // /descargas/csv/data/getEnvio/510
   const csv = await fetchFromJunta('/descargas/csv/data/getEnvio/510');
 
-  // Según la doc, devuelve registros de texto plano separados por ";" :contentReference[oaicite:3]{index=3}
+  // Nos quedamos con la primera línea, por si acaso hubiera más
   const line = csv.trim().split('\n')[0];
+
+  // La Junta nos está devolviendo simplemente "51" (sin ;)
+  // pero dejamos el código preparado por si algún día meten más campos.
   const parts = line.split(';');
 
-  // ⚠️ Aquí la doc NO detalla el diseño de campos de getEnvio.
-  // Vamos a asumir que el número de envío está en parts[1].
-  // Si al probar ves que no cuadra, bastará con cambiar el índice (1, 2, etc.)
-  const numEnv = parts[1];
+  let numEnv;
+  if (parts.length === 1) {
+    // Caso actual: "51"
+    numEnv = parts[0].trim();
+  } else {
+    // Caso posible: "20251221;51;..."
+    numEnv = (parts[1] || '').trim();
+  }
 
   if (!numEnv) {
     throw new Error(`No se ha podido obtener numEnv a partir de la línea: ${line}`);
   }
 
+  console.log('numEnv detectado desde getEnvio:', numEnv);
   return numEnv;
 }
+
 
 // 5) Obtener la línea "CM" (Comunidad Autónoma) del fichero de totales
 async function getTotalesLineaCM(numEnv) {

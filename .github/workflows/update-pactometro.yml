@@ -1,0 +1,33 @@
+name: Actualizar pactometro desde Junta
+
+on:
+  # Permite lanzarlo a mano desde la pestaña Actions
+  workflow_dispatch:
+  # Programación: cada 5 minutos (ajusta esto para la noche electoral)
+  schedule:
+    - cron: "*/5 * * * *"
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run update script
+        run: npm run update
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          JE_HOST: ${{ secrets.JE_HOST }}
+          JE_USER: ${{ secrets.JE_USER }}
+          JE_PASS: ${{ secrets.JE_PASS }}

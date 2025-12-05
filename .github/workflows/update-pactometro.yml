@@ -1,32 +1,30 @@
 name: Actualizar pactometro desde Junta
 
 on:
-  # ⏱ Programación automática
-  schedule:
-    # Intento de "cada minuto". GitHub normalmente lo ejecuta cada ~5 min,
-    # pero este es el cron correcto.
-    - cron: "*/1 * * * *"
-
-  # ▶️ Permite lanzarlo a mano desde la pestaña "Actions" (Run workflow)
+  # Lanzar a mano desde la pestaña Actions
   workflow_dispatch:
+
+  # Lanzar automático cada 5 minutos
+  schedule:
+    - cron: '*/5 * * * *'
 
 jobs:
   update:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout del repositorio
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Configurar Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Install dependencies
+      - name: Instalar dependencias
         run: npm install
 
-      - name: Run updater script
+      - name: Ejecutar actualización del pactómetro
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -34,3 +32,4 @@ jobs:
           JE_USER: ${{ secrets.JE_USER }}
           JE_PASS: ${{ secrets.JE_PASS }}
         run: npm run update
+

@@ -1,6 +1,8 @@
 name: Actualizar pactometro desde Junta
 
 on:
+  # Lanzar a mano desde la pestaña Actions
+  workflow_dispatch:
 
   # Lanzar automático cada 5 minutos
   schedule:
@@ -30,4 +32,3 @@ jobs:
           JE_USER: ${{ secrets.JE_USER }}
           JE_PASS: ${{ secrets.JE_PASS }}
         run: npm run update
-

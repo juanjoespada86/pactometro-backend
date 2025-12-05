@@ -2,8 +2,7 @@ name: Actualizar pactometro desde Junta
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "*/5 * * * *"
+
 
 jobs:
   update:

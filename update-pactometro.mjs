@@ -55,8 +55,6 @@ async function getCurrentNumEnv() {
   // Nos quedamos con la primera línea, por si acaso hubiera más
   const line = csv.trim().split('\n')[0];
 
-  // La Junta nos está devolviendo simplemente "51" (sin ;)
-  // pero dejamos el código preparado por si algún día meten más campos.
   const parts = line.split(';');
 
   let numEnv;
@@ -76,15 +74,14 @@ async function getCurrentNumEnv() {
   return numEnv;
 }
 
-
 // 5) Obtener la línea "CM" (Comunidad Autónoma) del fichero de totales
 async function getTotalesLineaCM(numEnv) {
-  // url: /descargas/csv/data/getEscrutinioTotales/510/{numEnv} :contentReference[oaicite:4]{index=4}
+  // /descargas/csv/data/getEscrutinioTotales/510/{numEnv}
   const csv = await fetchFromJunta(`/descargas/csv/data/getEscrutinioTotales/510/${numEnv}`);
 
   const lines = csv.trim().split('\n');
 
-  // Estructura del fichero de totales: el segundo campo es el identificador de registro CM/PR :contentReference[oaicite:5]{index=5}
+  // Estructura del fichero de totales: el segundo campo es el identificador de registro CM/PR
   const lineaCM = lines.find(line => {
     const parts = line.split(';');
     return parts[1] === 'CM';
@@ -97,7 +94,24 @@ async function getTotalesLineaCM(numEnv) {
   return lineaCM;
 }
 
-// 6) Parsear la línea CM y extraer candidaturas
+// 6) Obtener el porcentaje de censo escrutado a partir de la línea CM
+function getPctEscrutadoFromLineaCM(lineaCM) {
+  const fields = lineaCM.split(';');
+
+  // Campo 9 = "Porcentaje de censo escrutado" (dos últimas cifras son decimales)
+  const raw = fields[9] ? fields[9].trim() : '';
+  if (!raw) return null;
+
+  const num = Number(raw);
+  if (Number.isNaN(num)) return null;
+
+  // p.ej. 5678 -> 56.78
+  const pct = num / 100;
+  console.log('Porcentaje censo escrutado (CM):', pct);
+  return pct;
+}
+
+// 7) Parsear la línea CM y extraer candidaturas
 function parseCandidaturasFromLineaCM(lineaCM) {
   const fields = lineaCM.split(';');
 
@@ -122,14 +136,14 @@ function parseCandidaturasFromLineaCM(lineaCM) {
     // Nombre que queremos usar en el pactómetro
     let displayName = siglas;
 
-    // 🟣 Regla especial:
+    // Regla especial:
     // la candidatura "PODEMOS-IU-AV" la mostramos como "Unidas por Extremadura"
     if (siglas === 'PODEMOS-IU-AV') {
       displayName = 'Unidas por Extremadura';
     }
 
     const votos = votosRaw ? Number(votosRaw) : 0;
-    const porcentaje = pctRaw ? Number(pctRaw) / 100 : null;
+    const porcentaje = pctRaw ? Number(pctRaw) / 100 : null; // 3781 -> 37.81
     const escaños = escañosRaw ? Number(escañosRaw) : 0;
 
     const partyId = siglas
@@ -150,9 +164,8 @@ function parseCandidaturasFromLineaCM(lineaCM) {
   return candidaturas;
 }
 
-
-// 7) Upsert en Supabase (creando partidos nuevos y manteniendo seats_2023 de los antiguos)
-async function upsertCandidaturasEnSupabase(candidaturas) {
+// 8) Upsert en Supabase (creando partidos nuevos y manteniendo seats_2023 de los antiguos)
+async function upsertCandidaturasEnSupabase(candidaturas, pctEscrutado) {
   if (candidaturas.length === 0) {
     console.log('No hay candidaturas que upsertar.');
     return;
@@ -161,7 +174,7 @@ async function upsertCandidaturasEnSupabase(candidaturas) {
   // Primero leemos qué partidos existen ya y con cuántos escaños 2023
   const { data: existentes, error: errorExistentes } = await supabase
     .from('pactometro_results')
-    .select('party_id, seats_2023');
+    .select('party_id, seats_2023, pct_escrutado');
 
   if (errorExistentes) {
     throw errorExistentes;
@@ -186,6 +199,7 @@ async function upsertCandidaturasEnSupabase(candidaturas) {
       vote_pct_2025: c.vote_pct_2025,
       seats_2023: seats2023,
       updated_at: new Date().toISOString(),
+      pct_escrutado: pctEscrutado,    // 👈 nuevo campo
     };
   });
 
@@ -199,7 +213,7 @@ async function upsertCandidaturasEnSupabase(candidaturas) {
   }
 }
 
-// 8) Función principal
+// 9) Función principal
 async function main() {
   try {
     console.log('--- Actualizando pactómetro ---');
@@ -210,10 +224,11 @@ async function main() {
     const lineaCM = await getTotalesLineaCM(numEnv);
     console.log('Línea CM obtenida (inicio):', lineaCM.slice(0, 120) + '...');
 
+    const pctEscrutado = getPctEscrutadoFromLineaCM(lineaCM);
     const candidaturas = parseCandidaturasFromLineaCM(lineaCM);
     console.log('Candidaturas parseadas:', candidaturas);
 
-    await upsertCandidaturasEnSupabase(candidaturas);
+    await upsertCandidaturasEnSupabase(candidaturas, pctEscrutado);
 
     console.log('✅ Actualización completada correctamente.');
   } catch (err) {
@@ -224,3 +239,4 @@ async function main() {
 
 // Ejecutar
 main();
+

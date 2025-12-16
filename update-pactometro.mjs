@@ -49,7 +49,7 @@ async function fetchFromJunta(path) {
   return res.text();
 }
 
-// 4) Obtener el numEnv actual (igual que antes)
+// 4) Obtener el numEnv actual
 async function getCurrentNumEnv() {
   // /descargas/csv/data/getEnvio/510
   const csv = await fetchFromJunta('/descargas/csv/data/getEnvio/510');
@@ -57,8 +57,6 @@ async function getCurrentNumEnv() {
   // Nos quedamos con la primera línea, por si acaso hubiera más
   const line = csv.trim().split('\n')[0];
 
-  // La Junta nos está devolviendo simplemente "51" (sin ;)
-  // pero dejamos el código preparado por si algún día meten más campos.
   const parts = line.split(';');
 
   let numEnv;
@@ -122,11 +120,11 @@ async function getTotalesData(numEnv) {
   return { lineaCM, provincias };
 }
 
-// 6) Parsear una línea (CM o PR) y extraer candidaturas
+// 6) Parsear candidaturas (CM o PR) y extraer candidaturas
 function parseCandidaturasFromLinea(linea) {
   const fields = linea.split(';');
 
-  const NUM_HEADER_FIELDS = 22;
+  const NUM_HEADER_FIELDS = 22; // hasta "Número de votos faltantes"
   const candidaturaFields = fields.slice(NUM_HEADER_FIELDS);
 
   const candidaturas = [];
@@ -147,8 +145,7 @@ function parseCandidaturasFromLinea(linea) {
     // Nombre que queremos usar en el pactómetro
     let displayName = siglas;
 
-    // 🟣 Regla especial:
-    // la candidatura "PODEMOS-IU-AV" la mostramos como "Unidas por Extremadura"
+    // 🟣 Regla especial: "PODEMOS-IU-AV" => "Unidas por Extremadura"
     if (siglas === 'PODEMOS-IU-AV') {
       displayName = 'Unidas por Extremadura';
     }
@@ -180,8 +177,31 @@ function parseCandidaturasFromLineaCM(lineaCM) {
   return parseCandidaturasFromLinea(lineaCM);
 }
 
-// 7) Upsert autonómico en Supabase (lo que ya teníamos)
-async function upsertCandidaturasEnSupabase(candidaturas) {
+// 6bis) Parsear porcentaje de censo escrutado de la línea de totales (CM o PR)
+function parsePctEscrutadoFromLinea(linea) {
+  const fields = linea.split(';');
+
+  // Según documentación, el campo "Porcentaje de censo escrutado"
+  // es el décimo campo del fichero de totales.
+  const raw = (fields[9] || '').trim(); // índice 9 (0-based)
+
+  if (!raw) {
+    return null;
+  }
+
+  const num = Number(raw);
+  if (Number.isNaN(num)) {
+    console.warn('No se puede parsear pct_escrutado a partir de:', raw);
+    return null;
+  }
+
+  // Los porcentajes vienen con las dos últimas posiciones como decimales,
+  // es decir "0544" => 5.44 %
+  return num / 100;
+}
+
+// 7) Upsert autonómico en Supabase (lo que ya teníamos) + pct_escrutado
+async function upsertCandidaturasEnSupabase(candidaturas, pctEscrutado) {
   if (candidaturas.length === 0) {
     console.log('No hay candidaturas autonómicas que upsertar.');
     return;
@@ -203,6 +223,8 @@ async function upsertCandidaturasEnSupabase(candidaturas) {
   // Preparamos filas para upsert:
   // - Si el partido ya existe -> mantenemos seats_2023
   // - Si es nuevo -> seats_2023 = 0
+  const nowIso = new Date().toISOString();
+
   const rows = candidaturas.map(c => {
     const seats2023 = mapaExistentes.has(c.party_id)
       ? mapaExistentes.get(c.party_id)
@@ -214,7 +236,8 @@ async function upsertCandidaturasEnSupabase(candidaturas) {
       seats_2025: c.seats_2025,
       vote_pct_2025: c.vote_pct_2025,
       seats_2023: seats2023,
-      updated_at: new Date().toISOString(),
+      pct_escrutado: pctEscrutado,    // 👈 nuevo campo
+      updated_at: nowIso,
     };
   });
 
@@ -231,6 +254,7 @@ async function upsertCandidaturasEnSupabase(candidaturas) {
 // 8) Nuevo: upsert por provincias en Supabase
 async function upsertCandidaturasProvinciaEnSupabase(provinciasConCandidaturas) {
   const rows = [];
+  const nowIso = new Date().toISOString();
 
   provinciasConCandidaturas.forEach(prov => {
     const { province_id, province_name, candidaturas } = prov;
@@ -244,7 +268,9 @@ async function upsertCandidaturasProvinciaEnSupabase(provinciasConCandidaturas) 
         seats_2025: c.seats_2025,
         vote_pct_2025: c.vote_pct_2025,
         votos_totales: c.votos_totales,
-        updated_at: new Date().toISOString(),
+        updated_at: nowIso,
+        // Si en el futuro añades pct_escrutado a esta tabla,
+        // aquí podríamos añadirlo también.
       });
     });
   });
@@ -274,11 +300,15 @@ async function main() {
     // Obtenemos línea CM (Extremadura) y PR (provincias)
     const { lineaCM, provincias } = await getTotalesData(numEnv);
 
-    // Candidaturas autonómicas (lo de siempre)
+    // Porcentaje de censo escrutado a nivel comunidad
+    const pctEscrutadoCM = parsePctEscrutadoFromLinea(lineaCM);
+    console.log('Porcentaje de censo escrutado CM:', pctEscrutadoCM);
+
+    // Candidaturas autonómicas
     const candidaturasCM = parseCandidaturasFromLinea(lineaCM);
     console.log('Candidaturas autonómicas parseadas:', candidaturasCM);
 
-    await upsertCandidaturasEnSupabase(candidaturasCM);
+    await upsertCandidaturasEnSupabase(candidaturasCM, pctEscrutadoCM);
 
     // Candidaturas provinciales
     const provinciasConCandidaturas = provincias.map(p => ({
